@@ -102,6 +102,13 @@ async function run() {
       return res.send(result);
     });
 
+    app.get("/users/:email/role", async (req, res) => {
+      const email = req.params.email;
+      const query = { email };
+      const user = await userCollection.findOne(query);
+      res.send({ role: user.role });
+    });
+
     console.log("Successfully connected to mongoDB");
   } finally {
     //
