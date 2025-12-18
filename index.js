@@ -109,6 +109,24 @@ async function run() {
       res.send({ role: user.role });
     });
 
+    app.patch(
+      "/users/:id/role",
+      verifyFBToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const roleStatus = req.body;
+        const query = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            status: roleStatus.status,
+          },
+        };
+        const result = await userCollection.updateOne(query, updatedDoc);
+        res.send(result);
+      }
+    );
+
     console.log("Successfully connected to mongoDB");
   } finally {
     //
