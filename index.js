@@ -34,6 +34,7 @@ admin.initializeApp({
 const verifyFBToken = async (req, res, next) => {
   const token = req.headers.authorization;
 
+  // console.log(req.headers);
   if (!token) {
     return res.status(401).send({ message: "unauthorized access" });
   }
@@ -52,7 +53,7 @@ const verifyFBToken = async (req, res, next) => {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
 
     const db = client.db("fabrico");
     const userCollection = db.collection("users");
