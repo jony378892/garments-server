@@ -127,6 +127,21 @@ async function run() {
       }
     );
 
+    app.post("/products", verifyFBToken, async (req, res) => {
+      const product = req.body;
+      const email = req.decoded_email;
+
+      const user = await userCollection.findOne({ email: email });
+      if (user.role !== "manager") {
+        return res.status(401).send("Unauthorized access");
+      }
+
+      product.createdBy = email;
+      product.createdAt = new Date();
+      const result = await productCollection.insertOne(product);
+      res.send(result);
+    });
+
     console.log("Successfully connected to mongoDB");
   } finally {
     //
