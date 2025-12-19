@@ -312,6 +312,24 @@ async function run() {
       }
     );
 
+    app.patch(
+      "/managed-products/orders/:id/reject",
+      verifyFBToken,
+      verifyManager,
+      async (req, res) => {
+        const { id } = req.params;
+        const query = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            approvalStatus: "rejected",
+            approvedAt: new Date(),
+          },
+        };
+        const result = await orderCollection.updateOne(query, updatedDoc);
+        res.send(result);
+      }
+    );
+
     app.post("/orders", verifyFBToken, async (req, res) => {
       const orderPayload = req.body;
       orderPayload.createdAt = new Date();
