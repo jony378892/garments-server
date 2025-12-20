@@ -60,6 +60,7 @@ async function run() {
     const productCollection = db.collection("products");
     const orderCollection = db.collection("orders");
     const paymentCollection = db.collection("payments");
+    const trackingCollection = db.collection("trackings");
 
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded_email;
@@ -176,15 +177,21 @@ async function run() {
       }
     );
 
-    app.get("/orders", verifyFBToken, async (req, res) => {
-      const email = req.decoded_email;
-
-      const user = await userCollection.findOne({ email: email });
-      if (user.role !== "admin") {
-        return res.status(401).send("Unauthorized access");
+    app.get("/orders", verifyFBToken, verifyAdmin, async (req, res) => {
+      const { filter } = req.query;
+      const query = {};
+      if (filter) {
+        query.status = filter;
       }
 
-      const result = await orderCollection.find({}).toArray();
+      const result = await orderCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.get("/orders/:id", verifyFBToken, async (req, res) => {
+      const { id } = req.params;
+      const query = { _id: new ObjectId(id) };
+      const result = await orderCollection.findOne(query);
       res.send(result);
     });
 
@@ -220,6 +227,21 @@ async function run() {
       }
       const product = await productCollection.findOne(query);
       res.send(product);
+    });
+
+    app.patch("/products/:id/home", async (req, res) => {
+      const { id } = req.params;
+      const data = req.body;
+      const query = { _id: new ObjectId(id) };
+      const result = await productCollection.updateOne(query, { $set: data });
+      res.send(result);
+    });
+
+    app.delete("/products/:id/delete", async (req, res) => {
+      const { id } = req.params;
+      const query = { _id: new ObjectId(id) };
+      const result = await productCollection.deleteOne(query);
+      res.send(result);
     });
 
     app.get(
@@ -283,12 +305,28 @@ async function run() {
     );
 
     app.get(
+      "/managed-products/:email/pending",
+      verifyFBToken,
+      verifyManager,
+      async (req, res) => {
+        const { email } = req.params;
+        const query = {
+          createdBy: email,
+          status: "pending",
+        };
+
+        const result = await orderCollection.find(query).toArray();
+        res.send(result);
+      }
+    );
+
+    app.get(
       "/managed-products/approved-orders",
       verifyFBToken,
       verifyManager,
       async (req, res) => {
         const email = req.decoded_email;
-        const query = { approvalStatus: "approved", createdBy: email };
+        const query = { status: "approved", createdBy: email };
         const result = await orderCollection.find(query).toArray();
         res.send(result);
       }
@@ -303,7 +341,7 @@ async function run() {
         const query = { _id: new ObjectId(id) };
         const updatedDoc = {
           $set: {
-            approvalStatus: "approved",
+            status: "approved",
             approvedAt: new Date(),
           },
         };
@@ -321,11 +359,24 @@ async function run() {
         const query = { _id: new ObjectId(id) };
         const updatedDoc = {
           $set: {
-            approvalStatus: "rejected",
+            status: "rejected",
             approvedAt: new Date(),
           },
         };
         const result = await orderCollection.updateOne(query, updatedDoc);
+        res.send(result);
+      }
+    );
+
+    app.post(
+      "/managed-products/orders/:id/tracking",
+      verifyFBToken,
+      verifyManager,
+      async (req, res) => {
+        const { id } = req.params;
+        const trackingData = req.body;
+        trackingData.orderId = new ObjectId(id);
+        const result = await trackingCollection.insertOne(trackingData);
         res.send(result);
       }
     );
