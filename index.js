@@ -117,6 +117,18 @@ async function run() {
       res.send(result);
     });
 
+    app.patch("/users/:id/role", async (req, res) => {
+      const { id } = req.params;
+      const data = req.body;
+
+      const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: data,
+      };
+      const result = await userCollection.updateOne(query, updatedDoc);
+      res.send(result);
+    });
+
     app.get("/users/:email/role", async (req, res) => {
       const email = req.params.email;
       const query = { email };
@@ -124,20 +136,15 @@ async function run() {
       res.send({ role: user.role });
     });
 
-    app.patch(
-      "/users/:id/role",
+    app.post(
+      "/managed-products/orders/:id/tracking",
       verifyFBToken,
-      verifyAdmin,
+      verifyManager,
       async (req, res) => {
-        const id = req.params.id;
-        const { status } = req.body;
-        const query = { _id: new ObjectId(id) };
-        const updatedDoc = {
-          $set: {
-            status: status,
-          },
-        };
-        const result = await userCollection.updateOne(query, updatedDoc);
+        const { id } = req.params;
+        const trackingData = req.body;
+        trackingData.orderId = new ObjectId(id);
+        const result = await trackingCollection.insertOne(trackingData);
         res.send(result);
       }
     );
@@ -156,26 +163,6 @@ async function run() {
       const result = await productCollection.insertOne(product);
       res.send(result);
     });
-
-    app.patch(
-      "/products/:id/update",
-      verifyFBToken,
-      verifyAdmin,
-      async (req, res) => {
-        const data = req.body;
-        const id = req.params.id;
-
-        const query = { _id: new ObjectId(id) };
-        const updatedDoc = {
-          $set: data,
-        };
-        const result = await productCollection.findOneAndUpdate(
-          query,
-          updatedDoc
-        );
-        res.send(result);
-      }
-    );
 
     app.get("/orders", verifyFBToken, verifyAdmin, async (req, res) => {
       const { filter } = req.query;
@@ -263,11 +250,11 @@ async function run() {
       }
     );
 
-    app.patch(
-      "/managed-products/:id/update",
-      verifyFBToken,
-      verifyManager,
-      async (req, res) => {
+    app.patch("/products/:id/update", verifyFBToken, async (req, res) => {
+      const existUser = await userCollection.findOne({
+        email: req.decoded_email,
+      });
+      if (existUser.role === "admin" || existUser.role === "manager") {
         const data = req.body;
         const id = req.params.id;
 
@@ -276,9 +263,10 @@ async function run() {
           $set: data,
         };
         const result = await productCollection.updateOne(query, updatedDoc);
+        console.log(result);
         res.send(result);
       }
-    );
+    });
 
     app.delete(
       "/managed-products/:id/delete",
@@ -305,14 +293,13 @@ async function run() {
     );
 
     app.get(
-      "/managed-products/:email/pending",
+      "/managed-products/pending",
       verifyFBToken,
       verifyManager,
       async (req, res) => {
-        const { email } = req.params;
+        const email = req.decoded_email;
         const query = {
-          createdBy: email,
-          status: "pending",
+          $and: [{ createdBy: email }, { status: "pending" }],
         };
 
         const result = await orderCollection.find(query).toArray();
@@ -369,21 +356,48 @@ async function run() {
     );
 
     app.post(
-      "/managed-products/orders/:id/tracking",
+      "/managed-products/orders/:id/track",
       verifyFBToken,
       verifyManager,
       async (req, res) => {
-        const { id } = req.params;
-        const trackingData = req.body;
-        trackingData.orderId = new ObjectId(id);
-        const result = await trackingCollection.insertOne(trackingData);
-        res.send(result);
+        try {
+          const { id } = req.params;
+          const { status } = req.body;
+
+          const orderObjectId = new ObjectId(id);
+
+          // 1. Check if this status already exists
+          const exists = await trackingCollection.findOne({
+            orderId: orderObjectId,
+            status,
+          });
+
+          if (exists) {
+            return res.status(400).send({
+              message: "This tracking step already exists for this order",
+            });
+          }
+
+          // 2. Insert tracking
+          const trackingData = {
+            ...req.body,
+            orderId: orderObjectId,
+            updatedBy: req.decoded_email,
+            updatedAt: new Date(),
+          };
+
+          const result = await trackingCollection.insertOne(trackingData);
+
+          res.send({ modifiedCount: result.insertedId ? 1 : 0 });
+        } catch (err) {
+          res.status(500).send({ message: "Failed to add tracking" });
+        }
       }
     );
 
     app.get("/my-orders", verifyFBToken, async (req, res) => {
-      const customerEmail = req.query.email;
-      const query = { email: customerEmail, approvalStatus: "pending" };
+      const customerEmail = req.decoded_email;
+      const query = { email: customerEmail };
       const result = await orderCollection.find(query).toArray();
       res.send(result);
     });
